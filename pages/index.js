@@ -200,7 +200,7 @@ export default function Home() {
         <p className="text-sm opacity-80">
           © {new Date().getFullYear()} <span className="font-semibold">AidSwift</span>. All rights reserved.
         </p>
-        <p className="mt-2 text-xs text-blue-300">Được thiết kế & phát triển bởi nhóm KHKT 11/6 💙</p>
+        <p className="mt-2 text-xs text-blue-300">Được thiết kế & phát triển bởi KHKT 💙</p>
       </footer>
     </div>
   );
