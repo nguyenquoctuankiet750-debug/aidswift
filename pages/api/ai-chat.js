@@ -6,25 +6,33 @@ export default async function handler(req, res) {
 
   try {
     const { prompt } = req.body;
-    if (!prompt) {
-      return res.status(400).json({ error: "Thiếu prompt" });
+
+    // 🧩 Kiểm tra input
+    if (!prompt || typeof prompt !== "string") {
+      return res.status(400).json({ error: "Thiếu hoặc sai định dạng prompt" });
     }
 
+    // 🔑 Lấy API key từ biến môi trường
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
     if (!GEMINI_API_KEY) {
-      return res.status(500).json({ error: "Thiếu GEMINI_API_KEY trong .env.local" });
+      console.error("❌ Thiếu GEMINI_API_KEY trong môi trường.");
+      return res
+        .status(500)
+        .json({ error: "Thiếu GEMINI_API_KEY trong cấu hình server" });
     }
 
-    const model = "gemini-1.5-flash"; // ✅ model ổn định và được hỗ trợ
+    // 🧠 Model bạn đang dùng
+    const model = "gemini-1.5-flash";
 
+    // 🧭 Prompt hệ thống (hướng dẫn AI)
     const systemPrompt = `
-Bạn là một trợ lý AI thông minh, lịch sự và luôn trả lời bằng tiếng Việt.
-Hãy trả lời chi tiết, dễ hiểu và chia thành từng phần rõ ràng nếu câu hỏi phức tạp.
-Nếu được hỏi về lập trình, hãy dùng markdown để hiển thị code.
-Nếu được hỏi về kiến thức, hãy giải thích logic từng bước.
-Nếu không chắc chắn, hãy nêu rõ và gợi ý hướng tìm hiểu.
+      Bạn là một trợ lý AI thông minh, lịch sự và luôn trả lời bằng tiếng Việt.
+      Hãy giải thích chi tiết, dễ hiểu và chia thành các mục rõ ràng nếu cần.
+      Nếu câu hỏi liên quan đến lập trình, hãy hiển thị code bằng markdown.
+      Nếu không chắc chắn, hãy nói rõ và gợi ý hướng tìm hiểu tiếp theo.
     `;
 
+    // 🚀 Gửi yêu cầu đến Gemini API
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
       {
@@ -39,44 +47,46 @@ Nếu không chắc chắn, hãy nêu rõ và gợi ý hướng tìm hiểu.
           ],
           generationConfig: {
             temperature: 0.8,
-            maxOutputTokens: 1000,
-            topP: 0.9,
+            maxOutputTokens: 1200,
+            topP: 0.8,
           },
         }),
       }
     );
 
+    // 📦 Nhận kết quả JSON
     const data = await response.json();
 
-    // ✅ Log rõ lỗi để dễ phát hiện
+    // ❗ Nếu Gemini trả lỗi HTTP
     if (!response.ok) {
-      console.error("❌ Gemini API Response Error:", data);
+      console.error("🚨 Gemini API lỗi:", data);
       return res.status(500).json({
-        error: "Gemini API trả về lỗi.",
-        details: data.error || data,
+        error: "Gemini API lỗi",
+        details: data?.error?.message || "Không rõ nguyên nhân.",
       });
     }
 
-    // ✅ Kiểm tra phản hồi hợp lệ
-    const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-    if (!reply) {
-      return res.status(200).json({
-        reply: "⚠️ Tôi không thể xử lý câu hỏi này. Hãy thử diễn đạt lại nhé!",
-      });
+    // 💬 Trích xuất phản hồi từ Gemini
+    let reply =
+      data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ||
+      "⚠️ Tôi không thể xử lý câu hỏi này. Vui lòng thử lại với cách diễn đạt khác.";
+
+    // ✂️ Giới hạn phản hồi dài quá mức
+    if (reply.length > 4000) {
+      reply =
+        reply.slice(0, 4000) + "\n\n⚠️ Phản hồi bị rút gọn vì quá dài.";
     }
 
-    // ✂️ Giới hạn độ dài phản hồi
-    const limitedReply =
-      reply.length > 3000
-        ? reply.slice(0, 3000) + "\n\n⚠️ Phản hồi bị rút gọn vì quá dài."
-        : reply;
-
-    return res.status(200).json({ reply: limitedReply });
+    // ✅ Trả về phản hồi
+    return res.status(200).json({ reply });
   } catch (error) {
-    console.error("🔥 Server error:", error);
+    // 🔍 Ghi log chi tiết lỗi server (hiện trên terminal hoặc Vercel logs)
+    console.error("🔥 Lỗi server chi tiết:", error);
+
     return res.status(500).json({
       error: "Lỗi server nội bộ",
-      details: error.message,
+      message: error.message,
+      stack: error.stack,
     });
   }
 }
