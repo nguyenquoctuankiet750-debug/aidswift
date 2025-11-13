@@ -13,28 +13,28 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Thiếu hoặc sai định dạng prompt" });
     }
 
-    // ✅ Lấy GEMINI_API_KEY từ môi trường
+    // ✅ Lấy GEMINI_API_KEY từ biến môi trường
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
     if (!GEMINI_API_KEY) {
       console.error("❌ Thiếu GEMINI_API_KEY trong .env.local hoặc cấu hình Vercel");
-      return res
-        .status(500)
-        .json({ error: "Thiếu GEMINI_API_KEY trong cấu hình server" });
+      return res.status(500).json({
+        error: "Thiếu GEMINI_API_KEY trong cấu hình server",
+        message: "Vui lòng thêm GEMINI_API_KEY vào file .env.local hoặc phần Environment Variables trên Vercel.",
+      });
     }
 
-    // ✅ Model ổn định, công khai
+    // ✅ Model ổn định (được Google public)
     const model = "gemini-1.5-flash";
 
-    // 🧠 System prompt (để AI hiểu cách trả lời)
+    // 🧠 System prompt (hướng dẫn AI)
     const systemPrompt = `
-      Bạn là một trợ lý AI thông minh, lịch sự và luôn trả lời bằng tiếng Việt.
-      Hãy trả lời chi tiết, dễ hiểu và chia thành từng phần rõ ràng nếu câu hỏi phức tạp.
-      Nếu được hỏi về lập trình, hãy dùng markdown để hiển thị code.
-      Nếu được hỏi về kiến thức, hãy giải thích logic từng bước.
-      Nếu không chắc chắn, hãy nêu rõ và gợi ý hướng tìm hiểu.
+      Bạn là một trợ lý AI thân thiện, chuyên hỗ trợ người dùng bằng tiếng Việt.
+      Hãy giải thích rõ ràng, chi tiết, có ví dụ cụ thể nếu được hỏi về kỹ thuật.
+      Nếu không hiểu câu hỏi, hãy lịch sự yêu cầu người dùng làm rõ hơn.
+      Nếu nói về code, hãy hiển thị trong markdown \`\`\`.
     `;
 
-    // 🚀 Gửi request đến Gemini API
+    // 🚀 Gửi yêu cầu đến Gemini API
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
       {
@@ -44,26 +44,21 @@ export default async function handler(req, res) {
           contents: [
             {
               role: "user",
-              parts: [
-                {
-                  text: `${systemPrompt}\n\nCâu hỏi người dùng: ${prompt}`,
-                },
-              ],
+              parts: [{ text: `${systemPrompt}\n\nCâu hỏi người dùng: ${prompt}` }],
             },
           ],
           generationConfig: {
             temperature: 0.8,
             topP: 0.9,
-            maxOutputTokens: 1200,
+            maxOutputTokens: 1500,
           },
         }),
       }
     );
 
-    // 📦 Parse dữ liệu phản hồi
     const data = await response.json();
 
-    // ❗ Xử lý nếu API lỗi
+    // ❗ Nếu Gemini API lỗi → gửi chi tiết lỗi về frontend
     if (!response.ok) {
       console.error("🚨 Gemini API lỗi:", data);
       return res.status(500).json({
@@ -74,9 +69,11 @@ export default async function handler(req, res) {
     }
 
     // 💬 Lấy phản hồi từ Gemini
-    let reply =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "⚠️ Tôi không thể xử lý câu hỏi này. Vui lòng thử lại.";
+    let reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+    if (!reply.trim()) {
+      reply = "⚠️ Tôi không thể xử lý câu hỏi này. Vui lòng thử lại sau hoặc diễn đạt khác.";
+    }
 
     // ✂️ Giới hạn độ dài phản hồi
     if (reply.length > 3000) {
@@ -84,13 +81,16 @@ export default async function handler(req, res) {
     }
 
     // ✅ Trả kết quả về client
-    res.status(200).json({ reply });
+    res.status(200).json({ success: true, reply });
   } catch (error) {
-    console.error("🔥 Lỗi server nội bộ:", error);
+    console.error("🔥 Lỗi server:", error);
+
+    // 🧩 Gửi chi tiết lỗi về frontend
     res.status(500).json({
+      success: false,
       error: "Lỗi server nội bộ",
       message: error.message,
-      stack: error.stack,
+      stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
     });
   }
 }
