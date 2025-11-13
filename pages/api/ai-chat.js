@@ -15,18 +15,16 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "Thiếu GEMINI_API_KEY trong .env.local" });
     }
 
-    // ⚙️ Nên dùng model ổn định hơn
-    const model = "gemini-1.5-flash-latest";
+    const model = "gemini-1.5-flash"; // ✅ model ổn định và được hỗ trợ
 
-    // 🧠 Hướng dẫn AI chi tiết
     const systemPrompt = `
-      Bạn là một trợ lý AI thông minh, thân thiện và luôn trả lời bằng tiếng Việt.
-      Hãy trả lời chi tiết, dễ hiểu và chia thành từng phần nếu câu hỏi phức tạp.
-      Nếu được hỏi về lập trình, hãy trình bày bằng Markdown.
-      Nếu không chắc chắn, hãy nói rõ và gợi ý cách tìm hiểu.
+Bạn là một trợ lý AI thông minh, lịch sự và luôn trả lời bằng tiếng Việt.
+Hãy trả lời chi tiết, dễ hiểu và chia thành từng phần rõ ràng nếu câu hỏi phức tạp.
+Nếu được hỏi về lập trình, hãy dùng markdown để hiển thị code.
+Nếu được hỏi về kiến thức, hãy giải thích logic từng bước.
+Nếu không chắc chắn, hãy nêu rõ và gợi ý hướng tìm hiểu.
     `;
 
-    // 🟢 Gửi đúng cấu trúc JSON mới của Gemini API
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
       {
@@ -35,15 +33,14 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           contents: [
             {
-              parts: [
-                { text: `${systemPrompt}\n\nNgười dùng hỏi: ${prompt}` },
-              ],
+              role: "user",
+              parts: [{ text: `${systemPrompt}\n\nCâu hỏi người dùng: ${prompt}` }],
             },
           ],
           generationConfig: {
-            temperature: 0.9,
-            maxOutputTokens: 1500,
-            topP: 0.8,
+            temperature: 0.8,
+            maxOutputTokens: 1000,
+            topP: 0.9,
           },
         }),
       }
@@ -51,25 +48,35 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
-    // ❌ Nếu có lỗi từ API
+    // ✅ Log rõ lỗi để dễ phát hiện
     if (!response.ok) {
-      console.error("Gemini API error:", data);
+      console.error("❌ Gemini API Response Error:", data);
       return res.status(500).json({
-        error: "Gemini API lỗi",
-        details: data,
+        error: "Gemini API trả về lỗi.",
+        details: data.error || data,
       });
     }
 
-    // ✅ Đọc phản hồi mới đúng cấu trúc
-    const reply =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "⚠️ Gemini không thể xử lý câu hỏi này. Hãy thử lại với cách khác.";
+    // ✅ Kiểm tra phản hồi hợp lệ
+    const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (!reply) {
+      return res.status(200).json({
+        reply: "⚠️ Tôi không thể xử lý câu hỏi này. Hãy thử diễn đạt lại nhé!",
+      });
+    }
 
-    res.status(200).json({ reply });
+    // ✂️ Giới hạn độ dài phản hồi
+    const limitedReply =
+      reply.length > 3000
+        ? reply.slice(0, 3000) + "\n\n⚠️ Phản hồi bị rút gọn vì quá dài."
+        : reply;
+
+    return res.status(200).json({ reply: limitedReply });
   } catch (error) {
-    console.error("Server error:", error);
-    res
-      .status(500)
-      .json({ error: "Lỗi server nội bộ", details: error.message });
+    console.error("🔥 Server error:", error);
+    return res.status(500).json({
+      error: "Lỗi server nội bộ",
+      details: error.message,
+    });
   }
 }
