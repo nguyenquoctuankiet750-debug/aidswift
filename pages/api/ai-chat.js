@@ -15,17 +15,18 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "Thiếu GEMINI_API_KEY trong .env.local" });
     }
 
-    const model = "gemini-2.5-flash";
+    // ⚙️ Nên dùng model ổn định hơn
+    const model = "gemini-1.5-flash-latest";
 
-    // 🧠 Thêm hướng dẫn cho AI để nó hiểu và trả lời chi tiết hơn
+    // 🧠 Hướng dẫn AI chi tiết
     const systemPrompt = `
-      Bạn là một trợ lý AI thông minh, lịch sự và luôn trả lời bằng tiếng Việt.
-      Hãy trả lời chi tiết, dễ hiểu và chia thành từng phần rõ ràng nếu câu hỏi phức tạp.
-      Nếu được hỏi về lập trình, hãy dùng markdown để hiển thị code.
-      Nếu được hỏi về kiến thức, hãy giải thích logic từng bước.
-      Nếu không chắc chắn, hãy nêu rõ và gợi ý hướng tìm hiểu.
+      Bạn là một trợ lý AI thông minh, thân thiện và luôn trả lời bằng tiếng Việt.
+      Hãy trả lời chi tiết, dễ hiểu và chia thành từng phần nếu câu hỏi phức tạp.
+      Nếu được hỏi về lập trình, hãy trình bày bằng Markdown.
+      Nếu không chắc chắn, hãy nói rõ và gợi ý cách tìm hiểu.
     `;
 
+    // 🟢 Gửi đúng cấu trúc JSON mới của Gemini API
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
       {
@@ -34,8 +35,9 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           contents: [
             {
-              role: "user",
-              parts: [{ text: `${systemPrompt}\n\nCâu hỏi người dùng: ${prompt}` }],
+              parts: [
+                { text: `${systemPrompt}\n\nNgười dùng hỏi: ${prompt}` },
+              ],
             },
           ],
           generationConfig: {
@@ -49,6 +51,7 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
+    // ❌ Nếu có lỗi từ API
     if (!response.ok) {
       console.error("Gemini API error:", data);
       return res.status(500).json({
@@ -57,20 +60,16 @@ export default async function handler(req, res) {
       });
     }
 
-    let reply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!reply || reply.trim() === "") {
-      reply = "⚠️ Gemini không có phản hồi cho câu hỏi này. Hãy thử lại với cách diễn đạt khác.";
-    }
-
-    // ✂️ Giới hạn phản hồi quá dài
-    if (reply.length > 3000) {
-      reply = reply.slice(0, 3000) + "\n\n⚠️ Phản hồi bị rút gọn vì quá dài.";
-    }
+    // ✅ Đọc phản hồi mới đúng cấu trúc
+    const reply =
+      data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "⚠️ Gemini không thể xử lý câu hỏi này. Hãy thử lại với cách khác.";
 
     res.status(200).json({ reply });
   } catch (error) {
     console.error("Server error:", error);
-    res.status(500).json({ error: "Lỗi server nội bộ", details: error.message });
+    res
+      .status(500)
+      .json({ error: "Lỗi server nội bộ", details: error.message });
   }
 }
